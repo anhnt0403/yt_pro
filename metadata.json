@@ -1,0 +1,8 @@
+{
+  "name": "YTManager Pro - 100-Channel Controller",
+  "description": "A comprehensive YouTube channel management dashboard designed for large-scale operations, featuring bulk uploading, AI-powered metadata optimization, multi-channel analytics, and API quota management.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

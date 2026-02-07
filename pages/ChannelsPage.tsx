@@ -27,16 +27,37 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // --- [FIX] THÊM REF ĐỂ CHẶN GỬI TRÙNG MÃ ---
+  // --- [REF] CHẶN GỬI TRÙNG MÃ OAUTH ---
   const processedCodeRef = useRef<string | null>(null);
-  // ------------------------------------------
 
+  // --- [STATE] FORM INPUTS ---
   const [selectedStaffId, setSelectedStaffId] = useState('');
   const [networkName, setNetworkName] = useState('');
   const [revenuePercent, setRevenuePercent] = useState('100');
   const [channelCategory, setChannelCategory] = useState('');
   const [channelOrigin, setChannelOrigin] = useState<'COLD' | 'NET' | ''>('');
   const [systemConfig, setSystemConfig] = useState<any>(null);
+
+  // --- [FIX QUAN TRỌNG] REF ĐỂ GIỮ GIÁ TRỊ FORM MỚI NHẤT CHO EVENT LISTENER ---
+  const formValuesRef = useRef({
+    selectedStaffId: '',
+    networkName: '',
+    revenuePercent: '100',
+    channelCategory: '',
+    channelOrigin: ''
+  });
+
+  // Đồng bộ State vào Ref mỗi khi người dùng nhập liệu
+  useEffect(() => {
+    formValuesRef.current = {
+      selectedStaffId,
+      networkName,
+      revenuePercent,
+      channelCategory,
+      channelOrigin: channelOrigin as any
+    };
+  }, [selectedStaffId, networkName, revenuePercent, channelCategory, channelOrigin]);
+  // --------------------------------------------------------------------------
 
   const currentUser = dbService.getCurrentUser();
   const isAdmin = currentUser?.role === 'ADMIN';
@@ -69,7 +90,7 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
     return () => window.removeEventListener('db_updated', loadData);
   }, [loadData]);
 
-  // --- [UPDATED] LẮNG NGHE CODE VỚI CƠ CHẾ CHỐNG SPAM ---
+  // --- LẮNG NGHE CODE TỪ POPUP OAUTH ---
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
@@ -77,13 +98,12 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
       if (event.data?.type === 'OAUTH_CODE' && event.data.code) {
         const incomingCode = event.data.code;
         
-        // KIỂM TRA QUAN TRỌNG: Nếu code này đã xử lý rồi thì bỏ qua ngay
+        // Chặn duplicate code
         if (processedCodeRef.current === incomingCode) {
             console.warn("⚠️ Đã chặn duplicate code:", incomingCode);
             return; 
         }
 
-        // Đánh dấu code này đã xử lý
         processedCodeRef.current = incomingCode;
 
         console.log("✅ Received New Auth Code:", incomingCode);
@@ -97,7 +117,6 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
     const pendingCode = localStorage.getItem('pending_oauth_code');
     if (pendingCode) {
       localStorage.removeItem('pending_oauth_code');
-      // Kiểm tra cả localStorage code
       if (processedCodeRef.current !== pendingCode) {
           processedCodeRef.current = pendingCode;
           handleFinalizeOAuth(pendingCode);
@@ -135,7 +154,16 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
     setError(null);
     setEditingChannel(null);
     setIsWaitingForPopup(false);
-    processedCodeRef.current = null; // Reset bộ nhớ đệm khi đóng modal
+    processedCodeRef.current = null;
+    
+    // Reset luôn ref
+    formValuesRef.current = {
+      selectedStaffId: '',
+      networkName: '',
+      revenuePercent: '100',
+      channelCategory: '',
+      channelOrigin: ''
+    };
   };
 
   const exportChannelsToCSV = () => {
@@ -162,7 +190,7 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
     }
     try {
       setIsProcessing(true);
-      processedCodeRef.current = null; // Reset trước khi mở popup mới
+      processedCodeRef.current = null; 
       
       const url = await youtubeService.generateAuthUrl(systemConfig.clientId, 'full');
       
@@ -200,16 +228,21 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
       const authorizedChannels = await youtubeService.fetchAuthorizedChannels(tokenData.access_token);
       const channelIds = authorizedChannels.map(c => c.id);
 
+      // --- [FIX] SỬ DỤNG GIÁ TRỊ TỪ REF THAY VÌ STATE ---
+      // Điều này đảm bảo lấy được giá trị mới nhất ngay cả trong callback sự kiện
+      const currentInputs = formValuesRef.current;
+
       for (const c of authorizedChannels) {
         await dbService.addChannel({
           ...c,
-          assignedStaffId: selectedStaffId || currentUser?.id,
-          networkName: networkName,
-          revenueSharePercent: parseFloat(revenuePercent) || 100,
-          channelCategory: channelCategory,
-          channelOrigin: channelOrigin as any
+          assignedStaffId: currentInputs.selectedStaffId || currentUser?.id,
+          networkName: currentInputs.networkName,
+          revenueSharePercent: parseFloat(currentInputs.revenuePercent) || 100,
+          channelCategory: currentInputs.channelCategory,
+          channelOrigin: currentInputs.channelOrigin as any
         });
       }
+      // --------------------------------------------------
 
       await dbService.saveAccount({
         email: `OAuth-User-${Date.now()}@gmail.com`,
@@ -233,6 +266,8 @@ const ChannelsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
     if (!editingChannel) return;
     setIsProcessing(true);
     try {
+      // Hàm này được gọi trực tiếp từ nút Save (không qua EventListener) nên dùng state trực tiếp vẫn ổn
+      // Tuy nhiên dùng ref ở đây cũng không sai
       await dbService.addChannel({
         ...editingChannel,
         assignedStaffId: selectedStaffId,

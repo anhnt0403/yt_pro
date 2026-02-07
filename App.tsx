@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-// THÊM: BrowserRouter vào dòng import
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate, BrowserRouter } from 'react-router-dom';
 import { 
   BarChart3, Settings, LogOut, Bell, Video, Menu, HelpCircle,
-  Users as TeamIcon, Music, Globe, LayoutDashboard
+  Users as TeamIcon, Music, Globe, LayoutDashboard, X, 
+  ChevronLeft, ChevronRight 
 } from 'lucide-react';
 
 import ChannelsPage from './pages/ChannelsPage';
@@ -18,6 +18,7 @@ import OAuthCallback from './pages/OAuthCallback';
 import { dbService } from './services/dbService';
 import { UserProfile } from './types';
 
+// --- TRANSLATIONS (Giữ nguyên như cũ) ---
 export const translations = {
   vi: {
     dashboard: 'Tổng quan',
@@ -187,7 +188,17 @@ export const translations = {
   }
 };
 
-const Sidebar = ({ lang, user, onLogout }: { lang: 'vi' | 'en', user: UserProfile, onLogout: () => void }) => {
+interface SidebarProps {
+  lang: 'vi' | 'en';
+  user: UserProfile;
+  onLogout: () => void;
+  isOpen: boolean;
+  onClose: () => void;
+  isCollapsed: boolean;
+  toggleCollapse: () => void;
+}
+
+const Sidebar = ({ lang, user, onLogout, isOpen, onClose, isCollapsed, toggleCollapse }: SidebarProps) => {
   const location = useLocation();
   const t = translations[lang];
   
@@ -208,68 +219,131 @@ const Sidebar = ({ lang, user, onLogout }: { lang: 'vi' | 'en', user: UserProfil
   };
 
   return (
-    <div className="w-64 bg-[#111111] text-[#aaaaaa] flex flex-col h-screen fixed left-0 top-0 border-r border-white/5 z-50">
-      <div className="h-16 flex items-center px-6 gap-4">
-        <Menu size={20} className="text-[#aaaaaa] cursor-pointer hover:text-white" />
-        <div className="flex items-center gap-1">
-          <div className="bg-red-600 p-1 rounded-sm">
-            <Video size={16} className="text-white" />
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div className="fixed inset-0 bg-black/80 z-40 lg:hidden backdrop-blur-sm" onClick={onClose} />
+      )}
+
+      <div className={`
+        fixed inset-y-0 left-0 z-50
+        bg-[#111111] text-[#aaaaaa] flex flex-col h-screen border-r border-white/5
+        transition-all duration-300 ease-in-out shadow-2xl
+        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        ${isCollapsed ? 'lg:w-20' : 'lg:w-64'}
+        w-64
+      `}>
+        <div className={`h-16 flex items-center ${isCollapsed ? 'lg:justify-center' : 'px-6 justify-between'} transition-all`}>
+           <div className="flex items-center gap-2">
+             <div className="bg-red-600 p-1.5 rounded-lg shrink-0">
+               <Video size={18} className="text-white" />
+             </div>
+             <span className={`font-bold text-lg text-white tracking-tighter transition-all duration-300 ${isCollapsed ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden' : 'w-auto opacity-100'}`}>
+               Studio
+             </span>
+           </div>
+           <button onClick={onClose} className="lg:hidden text-white hover:text-red-500">
+             <X size={24} />
+           </button>
+        </div>
+
+        <div className={`
+            flex flex-col items-center text-center border-b border-white/5 mx-4 mb-4 transition-all duration-300
+            ${isCollapsed ? 'py-4' : 'py-6 px-2'}
+        `}>
+          <div className={`
+              rounded-full bg-[#111] border-2 border-red-600/20 overflow-hidden shadow-2xl transition-all duration-300
+              ${isCollapsed ? 'w-10 h-10 mb-0' : 'w-20 h-20 mb-4'}
+          `}>
+             <img src={user.avatarUrl || `https://i.pravatar.cc/150?u=${user.id}`} className="w-full h-full object-cover opacity-90" alt="" />
           </div>
-          <span className="font-bold text-lg text-white tracking-tighter">Studio</span>
+          
+          <div className={`transition-all duration-300 ${isCollapsed ? 'h-0 opacity-0 overflow-hidden' : 'h-auto opacity-100'}`}>
+            <p className="text-white font-black text-xs uppercase tracking-widest truncate max-w-[150px]">{user.name}</p>
+            <p className={`text-[9px] font-black uppercase tracking-[0.3em] mt-1 italic ${user.role === 'ADMIN' ? 'text-red-500' : user.role === 'LEADER' ? 'text-blue-500' : 'text-slate-500'}`}>
+                {getRoleLabel(user.role)}
+            </p>
+          </div>
         </div>
-      </div>
+        
+        <nav className="flex-1 px-3 space-y-1 overflow-y-auto no-scrollbar">
+          {filteredItems.map((item) => {
+            const isActive = location.pathname === item.path || (item.path === '/channels' && location.pathname.startsWith('/channels/'));
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => onClose()} 
+                title={isCollapsed ? item.name : ''}
+                className={`
+                  flex items-center gap-4 px-3 py-3.5 rounded-xl transition-all group relative
+                  ${isActive ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'hover:bg-white/5 hover:text-white'}
+                  ${isCollapsed ? 'justify-center' : ''}
+                `}
+              >
+                <item.icon size={20} className="shrink-0" />
+                
+                <span className={`
+                    text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all duration-300
+                    ${isCollapsed ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden' : 'w-auto opacity-100'}
+                `}>
+                    {item.name}
+                </span>
 
-      <div className="px-6 py-6 flex flex-col items-center text-center border-b border-white/5 mx-4 mb-4">
-        <div className="w-20 h-20 rounded-full bg-[#111] border-2 border-red-600/20 overflow-hidden mb-4 shadow-2xl">
-           <img src={user.avatarUrl || `https://i.pravatar.cc/150?u=${user.id}`} className="w-full h-full object-cover opacity-90" alt="" />
+                {isCollapsed && (
+                    <div className="absolute left-full ml-4 px-3 py-2 bg-[#222] text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-xl border border-white/10 hidden lg:block">
+                        {item.name}
+                    </div>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="p-3 border-t border-white/5 space-y-1">
+            <button 
+                title={t.support}
+                className={`
+                    flex items-center gap-4 w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-white/5 rounded-xl transition-colors
+                    ${isCollapsed ? 'justify-center' : ''}
+                `}>
+                <HelpCircle size={20} className="shrink-0" />
+                <span className={`transition-all duration-300 ${isCollapsed ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden' : 'w-auto opacity-100'}`}>{t.support}</span>
+            </button>
+            <button 
+                onClick={onLogout}
+                title={t.signout}
+                className={`
+                    flex items-center gap-4 w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-red-600/10 hover:text-red-500 rounded-xl transition-colors
+                    ${isCollapsed ? 'justify-center' : ''}
+                `}>
+                <LogOut size={20} className="shrink-0" />
+                <span className={`transition-all duration-300 ${isCollapsed ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden' : 'w-auto opacity-100'}`}>{t.signout}</span>
+            </button>
         </div>
-        <p className="text-white font-black text-xs uppercase tracking-widest">{user.name}</p>
-        <p className={`text-[9px] font-black uppercase tracking-[0.3em] mt-1 italic ${user.role === 'ADMIN' ? 'text-red-500' : user.role === 'LEADER' ? 'text-blue-500' : 'text-slate-500'}`}>
-          {getRoleLabel(user.role)}
-        </p>
-      </div>
-      
-      <nav className="flex-1 px-3 space-y-1">
-        {filteredItems.map((item) => {
-          const isActive = location.pathname === item.path || (item.path === '/channels' && location.pathname.startsWith('/channels/'));
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`flex items-center gap-4 px-4 py-3.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                isActive
-                  ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' 
-                  : 'hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <item.icon size={18} />
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
 
-      <div className="p-4 border-t border-white/5 space-y-1">
-        <button className="flex items-center gap-4 w-full px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-white/5 rounded-xl transition-colors">
-          <HelpCircle size={18} />
-          <span>{t.support}</span>
-        </button>
         <button 
-          onClick={onLogout}
-          className="flex items-center gap-4 w-full px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-red-600/10 hover:text-red-500 rounded-xl transition-colors"
+            onClick={toggleCollapse}
+            className="hidden lg:flex absolute -right-3 top-20 bg-red-600 text-white p-1 rounded-full border-4 border-[#0f0f0f] hover:scale-110 transition-transform shadow-lg z-50"
         >
-          <LogOut size={18} />
-          <span>{t.signout}</span>
+            {isCollapsed ? <ChevronRight size={14} strokeWidth={3} /> : <ChevronLeft size={14} strokeWidth={3} />}
         </button>
+
       </div>
-    </div>
+    </>
   );
 };
 
-const Header = ({ lang, setLang }: { lang: 'vi' | 'en', setLang: (l: 'vi' | 'en') => void }) => (
-  <header className="h-16 bg-[#0f0f0f] border-b border-white/5 flex items-center justify-end px-8 sticky top-0 z-40">
-    <div className="flex items-center gap-6">
-      <div className="flex items-center bg-white/5 p-1 rounded-full border border-white/5">
+const Header = ({ lang, setLang, onOpenMenu }: { lang: 'vi' | 'en', setLang: (l: 'vi' | 'en') => void, onOpenMenu: () => void }) => (
+  <header className="h-16 bg-[#0f0f0f] border-b border-white/5 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30">
+    <div className="flex items-center gap-4">
+      <button onClick={onOpenMenu} className="lg:hidden text-white p-2 hover:bg-white/5 rounded-lg">
+        <Menu size={24} />
+      </button>
+    </div>
+
+    <div className="flex items-center gap-4 lg:gap-6">
+      <div className="hidden sm:flex items-center bg-white/5 p-1 rounded-full border border-white/5">
         <button 
           onClick={() => setLang('vi')}
           className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${lang === 'vi' ? 'bg-white text-black shadow-lg scale-105' : 'text-[#555] hover:text-[#888]'}`}
@@ -286,7 +360,7 @@ const Header = ({ lang, setLang }: { lang: 'vi' | 'en', setLang: (l: 'vi' | 'en'
         </button>
       </div>
 
-      <div className="h-6 w-px bg-white/5"></div>
+      <div className="h-6 w-px bg-white/5 hidden sm:block"></div>
 
       <button className="relative text-[#aaaaaa] hover:text-white p-2 transition-colors">
         <Bell size={22} />
@@ -303,6 +377,8 @@ const Header = ({ lang, setLang }: { lang: 'vi' | 'en', setLang: (l: 'vi' | 'en'
 const App: React.FC = () => {
   const [lang, setLang] = useState<'vi' | 'en'>(dbService.getLanguage());
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(dbService.getCurrentUser());
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const handleSetLang = (newLang: 'vi' | 'en') => {
     setLang(newLang);
@@ -318,11 +394,8 @@ const App: React.FC = () => {
     setCurrentUser(dbService.getCurrentUser());
   };
 
-  // --- [SỬA LỖI] PHÁT HIỆN CALLBACK TỪ GOOGLE ---
-  // Kiểm tra 'pathname' thay vì 'hash' vì Google trả về đường dẫn chuẩn (không có #)
   if (window.location.pathname === '/oauth2callback') {
      return (
-        // Dùng BrowserRouter để đọc được URL chuẩn từ Google
         <BrowserRouter>
            <Routes>
               <Route path="/oauth2callback" element={<OAuthCallback />} />
@@ -330,7 +403,6 @@ const App: React.FC = () => {
         </BrowserRouter>
      );
   }
-  // ---------------------------------------------
 
   if (!currentUser) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
@@ -338,10 +410,24 @@ const App: React.FC = () => {
 
   return (
     <Router>
-      <div className="flex min-h-screen bg-[#0f0f0f] text-white">
-        <Sidebar lang={lang} user={currentUser} onLogout={handleLogout} />
-        <main className="flex-1 ml-64 min-h-screen flex flex-col">
-          <Header lang={lang} setLang={handleSetLang} />
+      <div className="flex w-full min-h-screen bg-[#0f0f0f] text-white">
+        
+        <Sidebar 
+          lang={lang} 
+          user={currentUser} 
+          onLogout={handleLogout} 
+          isOpen={isSidebarOpen} 
+          onClose={() => setIsSidebarOpen(false)} 
+          isCollapsed={isSidebarCollapsed} 
+          toggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+        />
+
+        {/* THAY ĐỔI: Thêm overflow-x-hidden và max-w-full để đảm bảo không bị vỡ layout */}
+        <main className={`
+            flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden transition-all duration-300 
+            ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} 
+        `}>
+          <Header lang={lang} setLang={handleSetLang} onOpenMenu={() => setIsSidebarOpen(true)} />
           <div className="flex-1 p-0">
             <Routes>
               <Route path="/" element={<Navigate to={currentUser.role === 'USER' ? "/users" : "/channels"} replace />} />
@@ -351,10 +437,7 @@ const App: React.FC = () => {
               <Route path="/music" element={<MusicPage lang={lang} />} />
               <Route path="/users" element={<UsersPage lang={lang} user={currentUser} />} />
               <Route path="/system" element={currentUser.role === 'ADMIN' ? <SystemPage lang={lang} /> : <Navigate to="/" replace />} />
-              
-              {/* Vẫn giữ Route này cho trường hợp dùng Hash trong tương lai */}
               <Route path="/oauth2callback" element={<OAuthCallback />} />
-              
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

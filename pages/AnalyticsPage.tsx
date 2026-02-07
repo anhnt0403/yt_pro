@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   TrendingUp, 
@@ -12,7 +11,9 @@ import {
   ChevronDown,
   Trophy,
   Crown,
-  Medal
+  Medal,
+  User,
+  ArrowRight // Thêm icon mũi tên cho khoảng ngày
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -36,6 +37,8 @@ interface ChannelStat {
   revenue: number;
   views: number;
   isMonetized: boolean;
+  managerName: string;
+  managerAvatar: string;
 }
 
 const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
@@ -62,8 +65,12 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
   const maxDateStr = twoDaysAgo.toISOString().split('T')[0];
 
   const [filterMode, setFilterMode] = useState<'PERIOD' | 'CUSTOM'>('PERIOD');
+  
+  // State cho bộ lọc định kỳ
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<number | 'ALL'>(currentMonth);
+  
+  // State cho bộ lọc tùy chỉnh (Ngày bắt đầu - Ngày kết thúc)
   const [customStart, setCustomStart] = useState(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
   const [customEnd, setCustomEnd] = useState(maxDateStr);
 
@@ -97,17 +104,15 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
         dbService.getUsers()
       ]);
       
+      const staffMap = new Map(staff.map(s => [s.id, s]));
       const visibleStaffIds = new Set(staff.map(s => s.id));
       
-      // 1. Lọc danh sách kênh theo team
       let teamChannels = allChannels;
       if (!isAdmin) {
         teamChannels = allChannels.filter(c => c.assignedStaffId && visibleStaffIds.has(c.assignedStaffId));
       }
       
       const teamChannelIds = new Set(teamChannels.map(c => c.id));
-
-      // 2. Lọc danh sách tài khoản chỉ bao gồm những tài khoản sở hữu kênh trong team
       const teamAccounts = accounts.filter(acc => 
         acc.ownedChannelIds && acc.ownedChannelIds.some(cid => teamChannelIds.has(cid))
       );
@@ -127,11 +132,12 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
         if (!account.accessToken || !account.ownedChannelIds) continue;
         
         for (const channelId of account.ownedChannelIds) {
-          // Chỉ lấy dữ liệu cho những kênh thuộc team
           if (!teamChannelIds.has(channelId)) continue;
           
           const channelInfo = teamChannels.find(c => c.id === channelId);
           if (!channelInfo) continue;
+
+          const manager = channelInfo.assignedStaffId ? staffMap.get(channelInfo.assignedStaffId) : null;
 
           if (!perChannelMap.has(channelId)) {
             perChannelMap.set(channelId, {
@@ -141,7 +147,9 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
               thumbnail: channelInfo.thumbnailUrl || '',
               revenue: 0,
               views: 0,
-              isMonetized: !!channelInfo.isMonetized
+              isMonetized: !!channelInfo.isMonetized,
+              managerName: manager ? manager.name : 'Chưa gán', 
+              managerAvatar: manager ? (manager.avatarUrl || '') : '' 
             });
           }
           
@@ -221,11 +229,12 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
 
   const exportToCSV = () => {
     if (channelStatsList.length === 0) return;
-    const headers = ["Thứ tự", "ID Kênh", "Tên Kênh", "Niche", "Doanh thu", "Lượt xem", "Trạng thái"];
+    const headers = ["Thứ tự", "ID Kênh", "Tên Kênh", "Người quản lý", "Niche", "Doanh thu", "Lượt xem", "Trạng thái"];
     const rows = channelStatsList.map((c, i) => [
       i + 1, 
       c.id, 
       c.name, 
+      c.managerName,
       c.niche, 
       c.revenue.toFixed(2), 
       c.views, 
@@ -244,6 +253,7 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
 
   return (
     <div className="p-8 space-y-8 bg-[#0a0a0a] min-h-screen text-white pb-24">
+      {/* HEADER SECTION: Đã cập nhật bộ lọc Ngày */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
         <div className="flex flex-col">
           <div className="flex items-center gap-3">
@@ -257,27 +267,61 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Nút chuyển chế độ */}
           <div className="flex bg-[#111] p-1 rounded-full border border-white/5">
              <button onClick={() => setFilterMode('PERIOD')} className={`px-5 py-2 rounded-full text-[10px] font-black uppercase transition-all ${filterMode === 'PERIOD' ? 'bg-white text-black' : 'text-[#555] hover:text-white'}`}>{t.periodic}</button>
              <button onClick={() => setFilterMode('CUSTOM')} className={`px-5 py-2 rounded-full text-[10px] font-black uppercase transition-all ${filterMode === 'CUSTOM' ? 'bg-white text-black' : 'text-[#555] hover:text-white'}`}>{t.custom}</button>
           </div>
-          <div className="flex items-center gap-3 bg-[#111] px-4 py-2 rounded-2xl border border-white/5">
-             <CalendarIcon size={16} className="text-[#444]" />
-             <div className="flex items-center gap-2">
-                <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="bg-transparent text-[11px] font-black text-white outline-none">
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y} className="bg-[#111]">{y}</option>)}
-                </select>
-                <ChevronDown size={12} className="text-[#444]" />
-             </div>
-             <div className="w-px h-4 bg-white/10 mx-1"></div>
-             <div className="flex items-center gap-2">
-                <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))} className="bg-transparent text-[11px] font-black text-white outline-none uppercase">
-                  <option value="ALL" className="bg-[#111]">Tất cả</option>
-                  {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1} className="bg-[#111]">Tháng {i+1}</option>)}
-                </select>
-                <ChevronDown size={12} className="text-[#444]" />
-             </div>
-          </div>
+
+          {/* LOGIC HIỂN THỊ BỘ LỌC */}
+          {filterMode === 'PERIOD' ? (
+            // Chế độ Định kỳ: Chọn Tháng / Năm (Cũ)
+            <div className="flex items-center gap-3 bg-[#111] px-4 py-2 rounded-2xl border border-white/5">
+                <CalendarIcon size={16} className="text-[#444]" />
+                <div className="flex items-center gap-2">
+                    <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="bg-transparent text-[11px] font-black text-white outline-none cursor-pointer">
+                    {[2024, 2025, 2026].map(y => <option key={y} value={y} className="bg-[#111]">{y}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-[#444]" />
+                </div>
+                <div className="w-px h-4 bg-white/10 mx-1"></div>
+                <div className="flex items-center gap-2">
+                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))} className="bg-transparent text-[11px] font-black text-white outline-none uppercase cursor-pointer">
+                    <option value="ALL" className="bg-[#111]">Tất cả</option>
+                    {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1} className="bg-[#111]">Tháng {i+1}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-[#444]" />
+                </div>
+            </div>
+          ) : (
+            // Chế độ Tùy chỉnh: Chọn Ngày (Mới)
+            <div className="flex items-center gap-2 bg-[#111] px-4 py-1.5 rounded-2xl border border-white/5">
+                {/* Từ ngày */}
+                <div className="relative group">
+                    <input 
+                        type="date" 
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                        onClick={(e) => e.currentTarget.showPicker()} // Bấm là hiện lịch
+                        className="bg-transparent text-[11px] font-black text-white outline-none uppercase cursor-pointer py-1 [color-scheme:dark]"
+                    />
+                </div>
+
+                <ArrowRight size={12} className="text-[#444]" />
+
+                {/* Đến ngày */}
+                <div className="relative group">
+                    <input 
+                        type="date" 
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                        onClick={(e) => e.currentTarget.showPicker()} // Bấm là hiện lịch
+                        className="bg-transparent text-[11px] font-black text-white outline-none uppercase cursor-pointer py-1 [color-scheme:dark]"
+                    />
+                </div>
+            </div>
+          )}
+
           <button onClick={fetchRealAnalytics} className="p-3 bg-[#111] border border-white/5 rounded-full text-[#555] hover:text-white transition-all">
              <RefreshCw size={20} className={loading ? 'animate-spin text-red-600' : ''} />
           </button>
@@ -429,19 +473,20 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-black/20 text-[10px] font-black text-[#333] uppercase tracking-[0.3em] border-b border-white/5">
-                <th className="px-12 py-8">{t.rank}</th>
-                <th className="px-12 py-8">{t.channelNiche}</th>
-                <th className="px-12 py-8 text-center">{t.status}</th>
-                <th className="px-12 py-8 text-right">{t.revenuePeriod}</th>
+                <th className="px-8 py-8">{t.rank}</th>
+                <th className="px-8 py-8">{t.channelNiche}</th>
+                <th className="px-8 py-8">{t.staffInCharge || "NGƯỜI QUẢN LÝ"}</th>
+                <th className="px-8 py-8 text-center">{t.status}</th>
+                <th className="px-8 py-8 text-right">{t.revenuePeriod}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {channelStatsList.length > 0 ? channelStatsList.map((c, idx) => (
                 <tr key={c.id} className="group hover:bg-white/5 transition-all">
-                  <td className="px-12 py-8">
+                  <td className="px-8 py-8">
                      <span className="text-xl font-black italic text-[#222] group-hover:text-red-600/40 transition-colors">#{idx + 1}</span>
                   </td>
-                  <td className="px-12 py-8">
+                  <td className="px-8 py-8">
                     <div className="flex items-center gap-5">
                       <img src={c.thumbnail} className="w-14 h-14 rounded-2xl bg-black object-cover border border-white/5 group-hover:border-red-600/30 transition-all shadow-xl" />
                       <div className="flex flex-col gap-0.5">
@@ -453,14 +498,26 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-12 py-8 text-center">
+                  <td className="px-8 py-8">
+                    <div className="flex items-center gap-3">
+                       <div className="w-8 h-8 rounded-full bg-[#222] overflow-hidden border border-white/10 shrink-0">
+                          {c.managerAvatar ? (
+                             <img src={c.managerAvatar} className="w-full h-full object-cover" alt="" />
+                          ) : (
+                             <div className="w-full h-full flex items-center justify-center text-[#444]"><User size={14} /></div>
+                          )}
+                       </div>
+                       <span className="text-xs font-black text-white/60 uppercase tracking-wide truncate max-w-[150px]">{c.managerName}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-8 text-center">
                      {c.isMonetized ? (
                        <span className="px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-green-600/10 text-green-500 border border-green-600/20">ACTIVE</span>
                      ) : (
                        <span className="px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest bg-white/5 text-[#333] border border-white/5">INACTIVE</span>
                      )}
                   </td>
-                  <td className="px-12 py-8 text-right">
+                  <td className="px-8 py-8 text-right">
                      <div className="flex flex-col items-end gap-1">
                         <span className="text-xl font-black text-white tabular-nums tracking-tighter group-hover:text-green-500 transition-colors">{formatCurrency(c.revenue)}</span>
                         <span className="text-[10px] text-[#444] font-black uppercase tracking-widest">{c.views.toLocaleString()} VIEWS</span>
@@ -469,7 +526,7 @@ const AnalyticsPage: React.FC<{ lang: 'vi' | 'en' }> = ({ lang }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={4} className="py-32 text-center opacity-10 font-black uppercase text-xs tracking-[0.5em] italic">
+                  <td colSpan={5} className="py-32 text-center opacity-10 font-black uppercase text-xs tracking-[0.5em] italic">
                     {t.noData}
                   </td>
                 </tr>
